@@ -1,0 +1,21 @@
+name = "gr0ut-dispo-bot"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Stockage des dispos (créé via : wrangler kv namespace create DISPO).
+# Colle l'id renvoyé ci-dessous.
+[[kv_namespaces]]
+binding = "DISPO"
+id = "f6885653ef7c4566b6d5576b617a3793"
+
+# Vendredi 16:00 + 17:00 UTC = 18h Paris (été/hiver). Le code ne poste qu'à 18h
+# Paris, une seule fois (verrou KV).
+[triggers]
+crons = ["0 16 * * 5", "0 17 * * 5"]
+
+# Variables NON secrètes. Secrets à poser : DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY
+[vars]
+DISCORD_APP_ID = "1543983109622595595"
+DISPO_CHANNEL_ID = "1473014802702926013"

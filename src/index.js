@@ -53,7 +53,7 @@ function dispoContent(tally) {
   return lines.join("\n");
 }
 
-async function sendDispoPoll(env, dateKey) {
+async function sendDispoPoll(env, dateKey, silent = false) {
   if (!env.DISPO_CHANNEL_ID || !env.DISCORD_TOKEN) {
     return { ok: false, reason: "DISPO_CHANNEL_ID / DISCORD_TOKEN manquant" };
   }
@@ -70,7 +70,8 @@ async function sendDispoPoll(env, dateKey) {
       body: JSON.stringify({
         content: dispoContent(tally),
         components: dispoButtons(dateKey),
-        allowed_mentions: { parse: ["everyone"] },  // ping @everyone une fois, à la publication
+        // ping @everyone une fois à la publication (sauf test en mode silencieux)
+        allowed_mentions: { parse: silent ? [] : ["everyone"] },
       }),
     },
   );

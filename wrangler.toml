@@ -10,10 +10,10 @@ workers_dev = true
 binding = "DISPO"
 id = "f6885653ef7c4566b6d5576b617a3793"
 
-# Vendredi 16:00 + 17:00 UTC = 18h Paris (été/hiver). Le code ne poste qu'à 18h
+# Vendredi 16:00 ET 17:00 UTC (1 seul cron) = 18h Paris été/hiver. Le code ne poste qu.à 18h
 # Paris, une seule fois (verrou KV).
 [triggers]
-crons = ["0 16 * * 5", "0 17 * * 5"]
+crons = ["0 16,17 * * 5"]
 
 # Variables NON secrètes. Secrets à poser : DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY
 [vars]

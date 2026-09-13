@@ -167,6 +167,11 @@ export default {
   // Cron : vendredi 16:00 et 17:00 UTC (= 18h Paris été/hiver). La garde interne
   // (vendredi 18h Paris + verrou KV) garantit un envoi unique.
   async scheduled(event, env, ctx) {
+    // Battement de cœur : trace chaque déclenchement de cron (diagnostic).
+    try {
+      await env.DISPO.put("last_tick",
+        JSON.stringify({ at: new Date().toISOString(), cron: event.cron }));
+    } catch (e) { /* ne doit jamais bloquer l'envoi */ }
     await maybeSendDispoPoll(env);
   },
 };

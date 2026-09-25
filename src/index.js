@@ -42,7 +42,9 @@ function dispoButtons(dateKey) {
 }
 
 function dispoContent(tally) {
-  const names = (o) => Object.values(o || {});
+  // Échappe le Markdown Discord : sinon les "_" des pseudos soulignent/italicisent la liste.
+  const esc = (s) => String(s).replace(/([\\*_~`|])/g, "\\$1");
+  const names = (o) => Object.values(o || {}).map(esc);
   const lines = ["@everyone",
                  "🎯 **Jeux de guerre demain soir (samedi, 22h)** - Renseigne ta dispo", ""];
   for (const [k, label] of Object.entries(BUCKETS)) {

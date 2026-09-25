@@ -44,10 +44,10 @@ function dispoButtons(dateKey) {
 function dispoContent(tally) {
   const names = (o) => Object.values(o || {});
   const lines = ["@everyone",
-                 "🎯 **Jeux de guerre demain soir (samedi, 22h)** — es-tu dispo ?", ""];
+                 "🎯 **Jeux de guerre demain soir (samedi, 22h)** - es-tu dispo ?", ""];
   for (const [k, label] of Object.entries(BUCKETS)) {
     const n = names(tally[k]);
-    lines.push(`${label} (${n.length}) : ${n.length ? n.join(", ") : "—"}`);
+    lines.push(`${label} (${n.length}) : ${n.length ? n.join(", ") : "-"}`);
   }
   lines.push("", "_Clique un bouton (tu peux changer d'avis à tout moment)._");
   return lines.join("\n");

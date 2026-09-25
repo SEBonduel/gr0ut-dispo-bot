@@ -95,6 +95,9 @@ async function maybeSendDispoPoll(env) {
   }
   await env.DISPO.put("dispo_posted", dateKey);
   const res = await sendDispoPoll(env, dateKey);
+  // Trace du résultat (ex. 404 Unknown Channel si le salon a été supprimé).
+  await env.DISPO.put("last_send",
+    JSON.stringify({ at: new Date().toISOString(), channel: env.DISPO_CHANNEL_ID, ...res }));
   // Échec d'envoi : on libère le verrou pour laisser le prochain tick réessayer.
   if (!res.ok) await env.DISPO.delete("dispo_posted");
   return res;

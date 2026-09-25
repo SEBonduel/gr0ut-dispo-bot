@@ -7,14 +7,15 @@ boutons ; seule une app bot le peut).
 
 ## Fonctionnement
 
-- **Auto** : chaque **vendredi 18h (heure de Paris)**, le bot poste le sondage dans
+- **Auto** : chaque **vendredi 10h (heure de Paris)**, le bot poste le sondage dans
   `DISPO_CHANNEL_ID` avec un ping **@everyone** (une seule fois, à la publication).
 - **Manuel** : la commande **`/sondage`** poste le même sondage à la demande.
 - Chaque clic bascule le joueur dans la bonne liste (un seul choix par personne),
   et réédite le message sans re-pinger. Les réponses sont stockées dans KV.
 
-Le cron tourne à 16:00 et 17:00 UTC le vendredi (= 18h Paris été/hiver) ; le code
-ne poste qu'à 18h Paris, une seule fois (verrou KV).
+Le cron tourne à 08:00 et 09:00 UTC le vendredi (= 10h Paris été/hiver) ; le code
+ne poste qu'à 10h Paris, une seule fois (verrou KV). Le jour est écrit `FRI` :
+chez Cloudflare, le jour 1 = dimanche, donc `5` désignerait le jeudi.
 
 ## Mise en place
 

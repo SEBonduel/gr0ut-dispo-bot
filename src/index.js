@@ -1,7 +1,7 @@
 /**
  * GR0UT — Bot "Dispo Jeux de guerre" (Cloudflare Worker, application Discord dédiée).
  *
- * Chaque vendredi 18h (heure de Paris), poste dans DISPO_CHANNEL_ID un sondage à
+ * Chaque vendredi 10h (heure de Paris), poste dans DISPO_CHANNEL_ID un sondage à
  * boutons "es-tu dispo pour les Jeux de guerre de demain ?" (Présent / Absent /
  * Peut-être). Les clics mettent à jour en direct la liste et les compteurs.
  *
@@ -78,19 +78,26 @@ async function sendDispoPoll(env, dateKey, silent = false) {
   return { ok: r.ok, status: r.status, detail: r.ok ? "" : (await r.text()).slice(0, 300) };
 }
 
-/** Ne poste qu'au vendredi 18h Paris, une seule fois (verrou KV par date). */
+/** Ne poste qu'au vendredi 10h Paris, une seule fois (verrou KV par date). */
 async function maybeSendDispoPoll(env) {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Paris", weekday: "short", hour: "2-digit", hour12: false,
     day: "2-digit", month: "2-digit", year: "numeric",
   }).formatToParts(new Date());
   const get = (t) => parts.find((p) => p.type === t)?.value;
-  if (get("weekday") !== "Fri" || parseInt(get("hour"), 10) !== 18) return;
+  if (get("weekday") !== "Fri" || parseInt(get("hour"), 10) !== 10) {
+    return { ok: false, reason: "hors créneau vendredi 10h Paris" };
+  }
 
   const dateKey = `${get("year")}-${get("month")}-${get("day")}`;
-  if ((await env.DISPO.get("dispo_posted")) === dateKey) return;
+  if ((await env.DISPO.get("dispo_posted")) === dateKey) {
+    return { ok: false, reason: `déjà posté (${dateKey})` };
+  }
   await env.DISPO.put("dispo_posted", dateKey);
-  await sendDispoPoll(env, dateKey);
+  const res = await sendDispoPoll(env, dateKey);
+  // Échec d'envoi : on libère le verrou pour laisser le prochain tick réessayer.
+  if (!res.ok) await env.DISPO.delete("dispo_posted");
+  return res;
 }
 
 /** Clic sur un bouton : met à jour le décompte et réédite le message. */
@@ -165,8 +172,8 @@ export default {
     return new Response("GR0UT dispo bot OK", { status: 200 });
   },
 
-  // Cron : vendredi 16:00 et 17:00 UTC (= 18h Paris été/hiver). La garde interne
-  // (vendredi 18h Paris + verrou KV) garantit un envoi unique.
+  // Cron : vendredi 08:00 et 09:00 UTC (= 10h Paris été/hiver). La garde interne
+  // (vendredi 10h Paris + verrou KV) garantit un envoi unique.
   async scheduled(event, env, ctx) {
     // Battement de cœur : trace chaque déclenchement de cron (diagnostic).
     try {

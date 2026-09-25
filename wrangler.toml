@@ -10,10 +10,11 @@ workers_dev = true
 binding = "DISPO"
 id = "f6885653ef7c4566b6d5576b617a3793"
 
-# Vendredi 16:00 ET 17:00 UTC (1 seul cron) = 18h Paris été/hiver. Le code ne poste qu.à 18h
+# Vendredi 08:00 ET 09:00 UTC (1 seul cron) = 10h Paris été/hiver. Le code ne poste qu'à 10h
 # Paris, une seule fois (verrou KV).
+# Attention : chez Cloudflare le jour 1 = dimanche (donc "5" = jeudi !). On écrit FRI.
 [triggers]
-crons = ["0 16,17 * * 5"]
+crons = ["0 8,9 * * FRI"]
 
 # Variables NON secrètes. Secrets à poser : DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY
 [vars]

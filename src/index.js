@@ -8,9 +8,12 @@
  * Pourquoi un worker + une app bot : les webhooks Discord ne peuvent pas porter de
  * boutons ; seule une application bot peut poster des composants et gérer les clics.
  *
+ * Commande /panneau-lu : poste le panneau des line-ups des Manœuvres. Chaque joueur
+ * clique sur sa LU (ou Remplaçant) et reçoit le rôle qui ouvre ses salons.
+ *
  * Secrets (wrangler secret put ...):
  *   DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY
- * Vars (wrangler.toml): DISCORD_APP_ID, DISPO_CHANNEL_ID
+ * Vars (wrangler.toml): DISCORD_APP_ID, DISPO_CHANNEL_ID, LU_ROLE_IDS, LU_GROUPS, LU_SUB_ROLE_ID
  * Binding KV : DISPO
  */
 
@@ -25,6 +28,9 @@ const json = (data, status = 200) =>
     status,
     headers: { "content-type": "application/json" },
   });
+
+// Échappe le Markdown Discord : sinon les "_" des pseudos soulignent/italicisent la liste.
+const esc = (s) => String(s).replace(/([\\*_~`|])/g, "\\$1");
 
 // --- Sondage de dispo --------------------------------------------------------
 
@@ -42,8 +48,6 @@ function dispoButtons(dateKey) {
 }
 
 function dispoContent(tally) {
-  // Échappe le Markdown Discord : sinon les "_" des pseudos soulignent/italicisent la liste.
-  const esc = (s) => String(s).replace(/([\\*_~`|])/g, "\\$1");
   const names = (o) => Object.values(o || {}).map(esc);
   const lines = ["@everyone",
                  "🎯 **Jeux de guerre demain soir (samedi, 22h)** - Renseigne ta dispo", ""];
@@ -127,9 +131,223 @@ async function handleDispoClick(interaction, env, id) {
   });
 }
 
+// --- Panneau des line-ups (Manœuvres) -----------------------------------------
+// Un message à boutons : une LU par bouton + Remplaçant + Quitter. Un clic sur une LU
+// donne son rôle et retire l'ancienne LU (une seule à la fois) ; Remplaçant se cumule
+// avec une LU et se retire en re-cliquant. Les salons (une catégorie par LU, une
+// catégorie Remplaçant vue par toutes les LU) sont créés par src/setup-lu.js. Les
+// listes du panneau sont relues sur Discord à chaque clic : il faut l'intent
+// "Server Members" du bot.
+
+const API = "https://discord.com/api/v10";
+
+/**
+ * Rôles des LU (ordre des boutons) et rôle Remplaçant, depuis wrangler.toml.
+ * Sections : LU_ROLE_IDS "a,b|c,d" + LU_GROUPS "Titre 1|Titre 2".
+ */
+function luConfig(env) {
+  const titles = (env.LU_GROUPS || "").split("|").map((s) => s.trim());
+  const groups = (env.LU_ROLE_IDS || "").split("|").map((part, i) => ({
+    title: titles[i] || "",
+    ids: part.split(",").map((s) => s.trim()).filter(Boolean),
+  })).filter((g) => g.ids.length);
+  const lus = groups.flatMap((g) => g.ids);
+  const sub = (env.LU_SUB_ROLE_ID || "").trim();
+  return { groups, lus, sub, slots: [...lus, sub].filter(Boolean) };
+}
+
+// Couleur des boutons par section (bleu, vert), rappelée devant le titre de la section.
+const GROUP_STYLES = [{ style: 1, mark: "🟦" }, { style: 3, mark: "🟩" }];
+
+const discord = (env, method, path, body) =>
+  fetch(`${API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bot ${env.DISCORD_TOKEN}`,
+      "content-type": "application/json",
+      "X-Audit-Log-Reason": encodeURIComponent("Panneau des LU"),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+// Réponses à une interaction (édition du panneau, message éphémère) : pas de token bot.
+const webhook = (interaction, method, suffix, body) =>
+  fetch(`${API}/webhooks/${interaction.application_id}/${interaction.token}${suffix}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+/** Tous les membres du serveur (null si l'intent "Server Members" est désactivé). */
+async function fetchMembers(env, guildId) {
+  const all = [];
+  let after = "0";
+  for (let i = 0; i < 10; i++) {
+    const r = await discord(env, "GET", `/guilds/${guildId}/members?limit=1000&after=${after}`);
+    if (!r.ok) return null;
+    const page = await r.json();
+    all.push(...page);
+    if (page.length < 1000) break;
+    after = page[page.length - 1].user.id;
+  }
+  return all;
+}
+
+function luEmbed(roles, members, cfg) {
+  const name = (m) => m.nick || m.user.global_name || m.user.username;
+  const who = (id) => members && members.filter((m) => m.roles.includes(id)).map(name)
+    .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" })).map(esc);
+  const count = (w) => (w ? w.length : "?");
+  const list = (w) => (!w ? "?" : w.length ? w.join(", ") : "-");
+  const lines = [
+    "Clique sur ta LU pour recevoir son rôle et accéder à ses salons.",
+    "Une seule LU à la fois : en choisir une autre retire l'ancienne.",
+    "**Remplaçant** : accès aux salons des remplaçants, que toutes les LU voient. " +
+      "Cumulable avec ta LU (re-clique pour ne plus l'être).",
+    "",
+  ];
+  cfg.groups.forEach((g, i) => {
+    if (g.title) lines.push(`### ${GROUP_STYLES[i % GROUP_STYLES.length].mark} ${esc(g.title)}`);
+    for (const id of g.ids.filter((id) => roles[id])) {
+      const w = who(id);
+      lines.push(`**${esc(roles[id].name)}** (${count(w)}) : ${list(w)}`);
+    }
+  });
+  if (roles[cfg.sub]) {
+    const w = who(cfg.sub);
+    lines.push(`### ⬜ ${esc(roles[cfg.sub].name)} (${count(w)})`, list(w));
+  }
+  let description = lines.join("\n");
+  if (description.length > 4096) description = description.slice(0, 4090) + " ...";
+  return {
+    title: "⚔️ Manœuvres - choisis ta line-up",
+    description,
+    color: 0xb22222,
+    footer: { text: members ? "Mis à jour" : "Listes indisponibles (intent Server Members désactivé)" },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function luButtons(roles, cfg) {
+  const button = (id, style) =>
+    ({ type: 2, style, label: roles[id].name.slice(0, 80), custom_id: `lu:${id}` });
+  const rows = [];
+  cfg.groups.forEach((g, i) => {
+    const ids = g.ids.filter((id) => roles[id]);
+    const style = GROUP_STYLES[i % GROUP_STYLES.length].style;
+    for (let j = 0; j < ids.length; j += 5) {
+      rows.push({ type: 1, components: ids.slice(j, j + 5).map((id) => button(id, style)) });
+    }
+  });
+  // 5 lignes max par message : 4 pour les LU, la dernière pour Remplaçant / Quitter.
+  if (rows.length > 4) {
+    throw new Error("trop de LU pour le panneau : 4 lignes de 5 boutons max, " +
+      "chaque section commence sur une nouvelle ligne");
+  }
+  const last = roles[cfg.sub] ? [button(cfg.sub, 2)] : [];
+  last.push({ type: 2, style: 4, label: "Quitter", custom_id: "lu:quit" });
+  rows.push({ type: 1, components: last });
+  return rows;
+}
+
+/**
+ * Contenu du panneau, relu sur Discord. `override` = rôles à jour du joueur qui vient
+ * de cliquer (la liste des membres peut encore renvoyer ses anciens rôles).
+ */
+async function buildLuPanel(env, guildId, override) {
+  const cfg = luConfig(env);
+  const r = await discord(env, "GET", `/guilds/${guildId}/roles`);
+  if (!r.ok) throw new Error(`impossible de lire les rôles du serveur (${r.status})`);
+  const roles = Object.fromEntries((await r.json()).map((x) => [x.id, x]));
+  let members = await fetchMembers(env, guildId);
+  if (members && override) {
+    members = members.map((m) => (m.user.id === override.id ? { ...m, roles: override.roles } : m));
+  }
+  return {
+    embeds: [luEmbed(roles, members, cfg)],
+    components: luButtons(roles, cfg),
+    allowed_mentions: { parse: [] },
+  };
+}
+
+/** Commande /panneau-lu : poste le panneau dans le salon courant. */
+async function postLuPanel(interaction, env) {
+  let msg;
+  try {
+    if (!luConfig(env).lus.length) {
+      msg = "❌ Aucune LU configurée : remplis LU_ROLE_IDS dans wrangler.toml puis redéploie.";
+    } else {
+      const data = await buildLuPanel(env, interaction.guild_id);
+      const r = await discord(env, "POST", `/channels/${interaction.channel_id}/messages`, data);
+      msg = r.ok ? "✅ Panneau des LU posté."
+        : `❌ Impossible de poster ici (${r.status}) : le bot doit pouvoir voir ce salon, ` +
+          "y envoyer des messages et intégrer des liens.";
+    }
+  } catch (e) {
+    msg = `❌ ${e.message}`;
+  }
+  await webhook(interaction, "PATCH", "/messages/@original", { content: msg });
+}
+
+/** Clic sur le panneau : change le rôle LU du joueur, répond en éphémère, rafraîchit. */
+async function handleLuClick(interaction, env) {
+  const cfg = luConfig(env);
+  const guildId = interaction.guild_id;
+  const uid = interaction.member.user.id;
+  const target = interaction.data.custom_id.slice("lu:".length); // id de rôle ou "quit"
+  const has = (id) => interaction.member.roles.includes(id);
+  const currentLus = cfg.lus.filter(has);
+  const role = (id) => `<@&${id}>`;
+  let reply, done;
+  let remove = [], add = [];
+  let override = null;
+
+  if (target !== "quit" && !cfg.slots.includes(target)) {
+    reply = "Ce bouton ne correspond plus à aucune LU : demande à un officier de reposter le panneau.";
+  } else if (target === "quit") {
+    // Quitter : retire la LU et Remplaçant.
+    remove = cfg.slots.filter(has);
+    if (!remove.length) reply = "Tu n'es dans aucune LU.";
+    else done = `Tu as quitté ${remove.map(role).join(", ")}.`;
+  } else if (target === cfg.sub) {
+    // Remplaçant se cumule avec une LU : le bouton l'ajoute ou le retire.
+    if (has(target)) { remove = [target]; done = `Tu n'es plus ${role(target)}.`; }
+    else { add = [target]; done = `✅ C'est noté, tu es ${role(target)}.`; }
+  } else if (currentLus.length === 1 && currentLus[0] === target) {
+    reply = `Tu es déjà dans ${role(target)}.`;
+  } else {
+    // Une seule LU à la fois : on retire les autres LU (Remplaçant est gardé).
+    remove = currentLus.filter((id) => id !== target);
+    add = currentLus.includes(target) ? [] : [target];
+    done = `✅ C'est noté, tu es dans ${role(target)}.`;
+  }
+
+  if (!reply) {
+    let ok = true;
+    for (const [method, id] of [...remove.map((id) => ["DELETE", id]), ...add.map((id) => ["PUT", id])]) {
+      const r = await discord(env, method, `/guilds/${guildId}/members/${uid}/roles/${id}`);
+      if (!r.ok) { ok = false; break; }
+    }
+    if (!ok) {
+      reply = "❌ Je n'ai pas pu changer tes rôles. Un officier doit vérifier que le rôle du bot " +
+        "a « Gérer les rôles » et qu'il est placé au-dessus des rôles LU.";
+    } else {
+      override = { id: uid, roles: interaction.member.roles.filter((id) => !remove.includes(id)).concat(add) };
+      reply = done;
+    }
+  }
+
+  await Promise.all([
+    webhook(interaction, "POST", "", { content: reply, flags: 64, allowed_mentions: { parse: [] } }),
+    buildLuPanel(env, guildId, override)
+      .then((data) => webhook(interaction, "PATCH", "/messages/@original", data))
+      .catch(() => {}),  // panneau pas rafraîchi : le prochain clic le remettra à jour
+  ]);
+}
+
 // --- Interactions Discord ----------------------------------------------------
 
-async function handleInteraction(interaction, env) {
+async function handleInteraction(interaction, env, ctx) {
   if (interaction.type === InteractionType.PING) {
     return json({ type: InteractionResponseType.PONG });
   }
@@ -149,11 +367,24 @@ async function handleInteraction(interaction, env) {
         },
       });
     }
+    // Commande /panneau-lu : réponse différée (éphémère) le temps de lire rôles et membres.
+    if (interaction.data?.name === "panneau-lu") {
+      ctx.waitUntil(postLuPanel(interaction, env));
+      return json({
+        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { flags: 64 },  // éphémère : seul l'officier voit "Panneau posté"
+      });
+    }
   }
 
   if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
     const id = interaction.data.custom_id || "";
     if (id.startsWith("dispo:")) return handleDispoClick(interaction, env, id);
+    // Clic LU : on accuse réception tout de suite (délai de 3 s), le travail suit.
+    if (id.startsWith("lu:")) {
+      ctx.waitUntil(handleLuClick(interaction, env).catch(() => {}));
+      return json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
+    }
   }
   return json({ type: InteractionResponseType.PONG });
 }
@@ -161,7 +392,7 @@ async function handleInteraction(interaction, env) {
 // --- Entrées du Worker -------------------------------------------------------
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/interactions" && request.method === "POST") {
@@ -171,7 +402,7 @@ export default {
       const valid = sig && ts &&
         (await verifyKey(raw, sig, ts, env.DISCORD_PUBLIC_KEY));
       if (!valid) return new Response("Bad request signature", { status: 401 });
-      return handleInteraction(JSON.parse(raw), env);
+      return handleInteraction(JSON.parse(raw), env, ctx);
     }
 
     return new Response("GR0UT dispo bot OK", { status: 200 });

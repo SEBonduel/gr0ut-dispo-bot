@@ -40,6 +40,45 @@ chez Cloudflare, le jour 1 = dimanche, donc `5` désignerait le jeudi.
    ```
    (globale : propagation jusqu'à ~1h.)
 
+## Panneau des line-ups (Manœuvres)
+
+La commande **`/panneau-lu`** (réservée à ceux qui ont *Gérer les rôles*) poste dans
+le salon courant un panneau à boutons : une case par LU, **Remplaçant** et
+**Quitter**. Un clic sur une LU donne son rôle et retire l'ancienne LU (une seule à
+la fois). **Remplaçant** se cumule avec une LU : le bouton l'ajoute, un second clic le
+retire. **Quitter** retire la LU et Remplaçant. Le joueur reçoit une confirmation
+visible de lui seul, et le panneau affiche qui est dans chaque LU. Les noms des
+boutons sont ceux des rôles : renommer un rôle suffit. Les LU peuvent être rangées en
+sections (ex. *Montée de palier* / *Full reset*), chacune avec sa couleur de bouton.
+
+Qui voit quoi : chaque rôle LU voit sa catégorie (salon texte + vocal) **et** la
+catégorie **Remplaçant** ; le rôle Remplaçant ne voit que la catégorie Remplaçant.
+
+Mise en place :
+
+1. **Rôles et salons** avec `src/setup-lu.js` : donne d'abord **Administrateur** au
+   rôle du bot (il doit pouvoir accorder toutes ces permissions), mets `GUILD_ID` et
+   `DISCORD_TOKEN` dans `.dev.vars`, puis :
+   ```bash
+   node --env-file=.dev.vars src/setup-lu.js "Montée de palier:" ICENIGHT BOA "Full reset:" KENTIN
+   ```
+   Il crée la catégorie `Manœuvres` avec le salon `choix-lu` (lecture seule), les
+   rôles `Remplaçant` et `LU <NOM>`, la catégorie Remplaçant et une catégorie par LU,
+   puis remplit `LU_ROLE_IDS`, `LU_GROUPS` et `LU_SUB_ROLE_ID` dans `wrangler.toml`.
+   Un argument qui finit par `:` ouvre une section ; options : `OFFICER_ROLE_IDS=id1,id2`
+   (rôles qui voient toutes les LU) et `PTT=1` (push-to-talk imposé).
+2. **Rôle du bot** : retire Administrateur, garde *Gérer les rôles*, et vérifie qu'il
+   est **au-dessus** des rôles LU (sinon Discord refuse l'attribution).
+3. **Portail développeur** → *Bot* → *Privileged Gateway Intents* : active
+   **Server Members Intent** (pour lister qui est dans chaque LU).
+4. `npx wrangler deploy`, relance `node src/register.js` (ajoute `/panneau-lu`), puis
+   tape `/panneau-lu` dans `choix-lu`.
+
+Ajouter une LU : relance le script avec la liste complète (ce qui existe déjà est
+gardé tel quel, la nouvelle LU reçoit l'accès aux salons Remplaçant), puis redéploie.
+Le bouton apparaît sur le panneau au clic suivant. Le panneau tient 4 lignes de 5 LU,
+chaque section commençant sur une nouvelle ligne.
+
 ## Notes
 
 - Pour restreindre qui peut lancer `/sondage` : *Paramètres du serveur →

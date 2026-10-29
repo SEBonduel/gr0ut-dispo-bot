@@ -51,28 +51,39 @@ visible de lui seul, et le panneau affiche qui est dans chaque LU. Les noms des
 boutons sont ceux des rôles : renommer un rôle suffit. Les LU peuvent être rangées en
 sections (ex. *Montée de palier* / *Full reset*), chacune avec sa couleur de bouton.
 
-Qui voit quoi : chaque rôle LU voit sa catégorie (salon texte + vocal) **et** la
-catégorie **Remplaçant** ; le rôle Remplaçant ne voit que la catégorie Remplaçant.
+Le message commence par une annonce (`src/lu-annonce.js`) qui explique comment récupérer
+le rôle de sa LU, le rôle Remplaçant et qui voit quoi. Elle mentionne @everyone à la publication
+seulement (les mises à jour du panneau ne re-pinguent pas), cite les salons Remplaçant
+(`LU_SUB_CHANNEL_IDS`) et la personne à contacter pour créer ou renommer une LU
+(`LU_CONTACT` : id Discord pour une mention cliquable, ou pseudo).
+
+Tout est dans la catégorie **𝕄𝕒𝕟𝕠𝕖𝕦𝕧𝕣𝕖𝕤**, au style des autres salons du serveur
+(`src/lu-style.js`), et chaque salon a ses propres permissions :
+
+- `📋𝐑𝐨̂𝐥𝐞𝐬-𝐋𝐔` (le panneau) : lisible par la commu interne (`MEMBER_ROLE_IDS`, les
+  rôles qui voient *Line Up*), personne n'y écrit sauf le bot ;
+- `💬𝐑𝐞𝐦𝐩𝐥𝐚𝐜̧𝐚𝐧𝐭` (texte) et `🔄 𝐑𝐞𝐦𝐩𝐥𝐚𝐜̧𝐚𝐧𝐭` (vocal) : rôle Remplaçant **et** toutes les LU ;
+- `💬𝐋𝐔-<𝐍𝐎𝐌>` (texte) et `⚔️ 𝐋𝐔 <𝐍𝐎𝐌>` (vocal) : uniquement le rôle de cette LU.
 
 Mise en place :
 
 1. **Rôles et salons** avec `src/setup-lu.js` : donne d'abord **Administrateur** au
-   rôle du bot (il doit pouvoir accorder toutes ces permissions), mets `GUILD_ID` et
-   `DISCORD_TOKEN` dans `.dev.vars`, puis :
+   rôle du bot (il doit pouvoir accorder toutes ces permissions), mets `GUILD_ID`,
+   `DISCORD_TOKEN` et `MEMBER_ROLE_IDS` dans `.dev.vars`, puis :
    ```bash
    node --env-file=.dev.vars src/setup-lu.js "Montée de palier:" ICENIGHT BOA "Full reset:" KENTIN
    ```
-   Il crée la catégorie `Manœuvres` avec le salon `choix-lu` (lecture seule), les
-   rôles `Remplaçant` et `LU <NOM>`, la catégorie Remplaçant et une catégorie par LU,
-   puis remplit `LU_ROLE_IDS`, `LU_GROUPS` et `LU_SUB_ROLE_ID` dans `wrangler.toml`.
-   Un argument qui finit par `:` ouvre une section ; options : `OFFICER_ROLE_IDS=id1,id2`
-   (rôles qui voient toutes les LU) et `PTT=1` (push-to-talk imposé).
+   Il crée la catégorie, le salon du panneau, les rôles `Remplaçant` et `LU <NOM>`
+   et leurs salons, puis remplit `LU_ROLE_IDS`, `LU_GROUPS` et `LU_SUB_ROLE_ID` dans
+   `wrangler.toml`. Un argument qui finit par `:` ouvre une section ; options :
+   `OFFICER_ROLE_IDS=id1,id2` (rôles qui voient toutes les LU) et `PTT=1`
+   (push-to-talk imposé).
 2. **Rôle du bot** : retire Administrateur, garde *Gérer les rôles*, et vérifie qu'il
    est **au-dessus** des rôles LU (sinon Discord refuse l'attribution).
 3. **Portail développeur** → *Bot* → *Privileged Gateway Intents* : active
    **Server Members Intent** (pour lister qui est dans chaque LU).
 4. `npx wrangler deploy`, relance `node src/register.js` (ajoute `/panneau-lu`), puis
-   tape `/panneau-lu` dans `choix-lu`.
+   tape `/panneau-lu` dans `📋𝐑𝐨̂𝐥𝐞𝐬-𝐋𝐔`.
 
 Ajouter une LU : relance le script avec la liste complète (ce qui existe déjà est
 gardé tel quel, la nouvelle LU reçoit l'accès aux salons Remplaçant), puis redéploie.

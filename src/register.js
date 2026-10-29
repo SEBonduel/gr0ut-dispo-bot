@@ -14,7 +14,7 @@ const commands = [
   },
   {
     name: "panneau-lu",
-    description: "Poste le panneau de choix des line-ups (Manœuvres) dans ce salon",
+    description: "Poste le panneau des rôles de line-up (Manœuvres) dans ce salon",
     type: 1,
     default_member_permissions: "268435456",  // "Gérer les rôles" : officiers seulement
     contexts: [0],  // serveur uniquement

@@ -13,7 +13,8 @@
  *
  * Secrets (wrangler secret put ...):
  *   DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY
- * Vars (wrangler.toml): DISCORD_APP_ID, DISPO_CHANNEL_ID, LU_ROLE_IDS, LU_GROUPS, LU_SUB_ROLE_ID
+ * Vars (wrangler.toml): DISCORD_APP_ID, DISPO_CHANNEL_ID, LU_ROLE_IDS, LU_GROUPS,
+ *   LU_SUB_ROLE_ID, LU_SUB_CHANNEL_IDS, LU_CONTACT
  * Binding KV : DISPO
  */
 
@@ -22,6 +23,7 @@ import {
   InteractionType,
   InteractionResponseType,
 } from "discord-interactions";
+import { luAnnouncement } from "./lu-annonce.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -134,10 +136,10 @@ async function handleDispoClick(interaction, env, id) {
 // --- Panneau des line-ups (Manœuvres) -----------------------------------------
 // Un message à boutons : une LU par bouton + Remplaçant + Quitter. Un clic sur une LU
 // donne son rôle et retire l'ancienne LU (une seule à la fois) ; Remplaçant se cumule
-// avec une LU et se retire en re-cliquant. Les salons (une catégorie par LU, une
-// catégorie Remplaçant vue par toutes les LU) sont créés par src/setup-lu.js. Les
-// listes du panneau sont relues sur Discord à chaque clic : il faut l'intent
-// "Server Members" du bot.
+// avec une LU et se retire en re-cliquant. Les salons (texte + vocal par LU, Remplaçant
+// vu par toutes les LU, tous dans la catégorie Manœuvres) sont créés par
+// src/setup-lu.js. Les listes du panneau sont relues sur Discord à chaque clic : il
+// faut l'intent "Server Members" du bot.
 
 const API = "https://discord.com/api/v10";
 
@@ -153,11 +155,12 @@ function luConfig(env) {
   })).filter((g) => g.ids.length);
   const lus = groups.flatMap((g) => g.ids);
   const sub = (env.LU_SUB_ROLE_ID || "").trim();
-  return { groups, lus, sub, slots: [...lus, sub].filter(Boolean) };
+  const subChannels = (env.LU_SUB_CHANNEL_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return { groups, lus, sub, subChannels, slots: [...lus, sub].filter(Boolean) };
 }
 
-// Couleur des boutons par section (bleu, vert), rappelée devant le titre de la section.
-const GROUP_STYLES = [{ style: 1, mark: "🟦" }, { style: 3, mark: "🟩" }];
+// Couleur des boutons par section (bleu, vert), expliquée dans l'annonce (lu-annonce.js).
+const GROUP_STYLES = [1, 3];
 
 const discord = (env, method, path, body) =>
   fetch(`${API}${path}`, {
@@ -199,28 +202,22 @@ function luEmbed(roles, members, cfg) {
     .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" })).map(esc);
   const count = (w) => (w ? w.length : "?");
   const list = (w) => (!w ? "?" : w.length ? w.join(", ") : "-");
-  const lines = [
-    "Clique sur ta LU pour recevoir son rôle et accéder à ses salons.",
-    "Une seule LU à la fois : en choisir une autre retire l'ancienne.",
-    "**Remplaçant** : accès aux salons des remplaçants, que toutes les LU voient. " +
-      "Cumulable avec ta LU (re-clique pour ne plus l'être).",
-    "",
-  ];
-  cfg.groups.forEach((g, i) => {
-    if (g.title) lines.push(`### ${GROUP_STYLES[i % GROUP_STYLES.length].mark} ${esc(g.title)}`);
+  const lines = [];
+  for (const g of cfg.groups) {
+    if (g.title) lines.push(`### ${esc(g.title)}`);
     for (const id of g.ids.filter((id) => roles[id])) {
       const w = who(id);
       lines.push(`**${esc(roles[id].name)}** (${count(w)}) : ${list(w)}`);
     }
-  });
+  }
   if (roles[cfg.sub]) {
     const w = who(cfg.sub);
-    lines.push(`### ⬜ ${esc(roles[cfg.sub].name)} (${count(w)})`, list(w));
+    lines.push(`### ${esc(roles[cfg.sub].name)} (${count(w)})`, list(w));
   }
   let description = lines.join("\n");
   if (description.length > 4096) description = description.slice(0, 4090) + " ...";
   return {
-    title: "⚔️ Manœuvres - choisis ta line-up",
+    title: "Composition des line-ups",
     description,
     color: 0xb22222,
     footer: { text: members ? "Mis à jour" : "Listes indisponibles (intent Server Members désactivé)" },
@@ -234,7 +231,7 @@ function luButtons(roles, cfg) {
   const rows = [];
   cfg.groups.forEach((g, i) => {
     const ids = g.ids.filter((id) => roles[id]);
-    const style = GROUP_STYLES[i % GROUP_STYLES.length].style;
+    const style = GROUP_STYLES[i % GROUP_STYLES.length];
     for (let j = 0; j < ids.length; j += 5) {
       rows.push({ type: 1, components: ids.slice(j, j + 5).map((id) => button(id, style)) });
     }
@@ -264,9 +261,10 @@ async function buildLuPanel(env, guildId, override) {
     members = members.map((m) => (m.user.id === override.id ? { ...m, roles: override.roles } : m));
   }
   return {
+    content: luAnnouncement({ subChannels: cfg.subChannels, contact: (env.LU_CONTACT || "").trim() }),
     embeds: [luEmbed(roles, members, cfg)],
     components: luButtons(roles, cfg),
-    allowed_mentions: { parse: [] },
+    allowed_mentions: { parse: [] },  // les mises à jour ne re-pinguent personne
   };
 }
 
@@ -278,10 +276,12 @@ async function postLuPanel(interaction, env) {
       msg = "❌ Aucune LU configurée : remplis LU_ROLE_IDS dans wrangler.toml puis redéploie.";
     } else {
       const data = await buildLuPanel(env, interaction.guild_id);
-      const r = await discord(env, "POST", `/channels/${interaction.channel_id}/messages`, data);
+      // Ping @everyone une seule fois, à la publication
+      const r = await discord(env, "POST", `/channels/${interaction.channel_id}/messages`,
+        { ...data, allowed_mentions: { parse: ["everyone"] } });
       msg = r.ok ? "✅ Panneau des LU posté."
         : `❌ Impossible de poster ici (${r.status}) : le bot doit pouvoir voir ce salon, ` +
-          "y envoyer des messages et intégrer des liens.";
+          "y envoyer des messages, intégrer des liens et mentionner @everyone.";
     }
   } catch (e) {
     msg = `❌ ${e.message}`;

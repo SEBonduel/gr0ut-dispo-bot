@@ -63,7 +63,8 @@ Tout est dans la catégorie **𝕄𝕒𝕟𝕠𝕖𝕦𝕧𝕣𝕖𝕤**, au sty
 - `📋𝐑𝐨̂𝐥𝐞𝐬-𝐋𝐔` (le panneau) : lisible par la commu interne (`MEMBER_ROLE_IDS`, les
   rôles qui voient *Line Up*), personne n'y écrit sauf le bot ;
 - `💬𝐑𝐞𝐦𝐩𝐥𝐚𝐜̧𝐚𝐧𝐭` (texte) et `🔄 𝐑𝐞𝐦𝐩𝐥𝐚𝐜̧𝐚𝐧𝐭` (vocal) : rôle Remplaçant **et** toutes les LU ;
-- `💬𝐋𝐔-<𝐍𝐎𝐌>` (texte) et `⚔️ 𝐋𝐔 <𝐍𝐎𝐌>` (vocal) : uniquement le rôle de cette LU.
+- `💬𝐋𝐔-<𝐍𝐎𝐌>` (texte) et `⚔️ 𝐋𝐔 <𝐍𝐎𝐌>` (vocal) : uniquement le rôle de cette LU ;
+- partout : les rôles de `OFFICER_ROLE_IDS` (ici *Commandant en 2nd*), qui suivent toutes les LU.
 
 Mise en place :
 
@@ -87,6 +88,7 @@ Mise en place :
 
 Ajouter une LU : relance le script avec la liste complète (ce qui existe déjà est
 gardé tel quel, la nouvelle LU reçoit l'accès aux salons Remplaçant), puis redéploie.
+Un rôle ajouté à `OFFICER_ROLE_IDS` reçoit de même l'accès aux salons existants à la relance.
 Le bouton apparaît sur le panneau au clic suivant. Le panneau tient 4 lignes de 5 LU,
 chaque section commençant sur une nouvelle ligne.
 

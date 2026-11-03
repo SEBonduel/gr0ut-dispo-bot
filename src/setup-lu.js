@@ -18,9 +18,9 @@
  *   - 💬Remplaçant (texte) et 🔄 Remplaçant (vocal) : visible par Remplaçant, toutes les LU et les officiers ;
  *   - 💬LU-<NOM> (texte) et ⚔️ LU <NOM> (vocal) par LU : visible par le rôle de la LU et
  *     les officiers.
- * Ce qui existe déjà (même nom) est laissé tel quel, sauf l'accès des nouvelles LU aux
- * salons Remplaçant : relancer avec la liste complète pour ajouter une LU. Les boutons
- * du panneau suivent l'ordre des noms donnés.
+ * Ce qui existe déjà (même nom) est laissé tel quel, sauf les accès qui manquent (nouvelles
+ * LU aux salons Remplaçant, officiers ajoutés à OFFICER_ROLE_IDS) : relancer avec la liste
+ * complète pour ajouter une LU. Les boutons du panneau suivent l'ordre des noms donnés.
  *
  * Le bot doit pouvoir accorder toutes ces permissions : le plus simple est de donner
  * Administrateur à son rôle le temps du script, puis de ne garder que Gérer les rôles.
@@ -173,6 +173,15 @@ const player = { type: 0,
 const officer = bits(P.VIEW, P.SEND, P.HISTORY, P.REACT, P.EMBED, P.ATTACH, P.CONNECT, P.SPEAK,
   P.STREAM, P.MOVE, P.MUTE, P.MANAGE_MESSAGES);
 
+// Sur un salon déjà là, ajoute les accès qui lui manquent : [id du rôle, permissions, nom]
+async function grantMissing(ch, grants) {
+  const known = new Set((ch.permission_overwrites || []).map((o) => o.id));
+  for (const [id, overwrite, label] of grants.filter(([id]) => !known.has(id))) {
+    await api("PUT", `/channels/${ch.id}/permissions/${id}`, overwrite);
+    report.push(`~ accès ${label} ajouté à ${ch.name}`);
+  }
+}
+
 async function ensurePrivateChannels([textEmoji, voiceEmoji], name, roleIds) {
   const overwrites = [
     hidden,
@@ -180,22 +189,21 @@ async function ensurePrivateChannels([textEmoji, voiceEmoji], name, roleIds) {
     ...OFFICERS.map((id) => ({ id, type: 0, allow: officer })),
     bot(P.MANAGE_CHANNELS),
   ];
-  return [
+  const chans = [
     await ensureChannel(textName(textEmoji, name), 0, cat.id, overwrites),
     await ensureChannel(voiceName(voiceEmoji, name), 2, cat.id, overwrites),
   ];
+  // Officiers ajoutés depuis la création : ils reçoivent l'accès aux salons existants
+  const officers = OFFICERS.map((id) =>
+    [id, { type: 0, allow: officer }, roles.find((r) => r.id === id)?.name ?? id]);
+  for (const ch of chans) await grantMissing(ch, officers);
+  return chans;
 }
 
 // Remplaçant : vu par toutes les LU. Sur une relance, les LU ajoutées y reçoivent l'accès.
 const luIds = lus.map((l) => l.role.id);
 const subChannels = await ensurePrivateChannels([TEXT_EMOJI, SUB_VOICE_EMOJI], SUB_NAME, [sub.id, ...luIds]);
-for (const ch of subChannels) {
-  const known = new Set((ch.permission_overwrites || []).map((o) => o.id));
-  for (const lu of lus.filter((l) => !known.has(l.role.id))) {
-    await api("PUT", `/channels/${ch.id}/permissions/${lu.role.id}`, player);
-    report.push(`~ accès ${lu.name} ajouté à ${ch.name}`);
-  }
-}
+for (const ch of subChannels) await grantMissing(ch, lus.map((l) => [l.role.id, player, l.name]));
 for (const lu of lus) await ensurePrivateChannels([TEXT_EMOJI, LU_VOICE_EMOJI], lu.name, [lu.role.id]);
 
 // wrangler.toml (sections séparées par "|")

@@ -28,8 +28,8 @@ ${bench}, c'est le **banc de touche** : les remplaçants s'y signalent quand ils
 
 ## Qui voit quoi
 - **Ce salon** : toute la commu, mais personne n'écrit dedans. Il sert uniquement à récupérer son rôle.
-- **Le salon et le vocal de ta LU** : uniquement les joueurs de ta LU.
-- **Les salons Remplaçant** : les remplaçants **et** toutes les LU.
+- **Le salon et le vocal de ta LU** : les joueurs de ta LU, plus les **commandants en second** qui suivent toutes les LU.
+- **Les salons Remplaçant** : les remplaçants, toutes les LU et les commandants en second.
 
 Une LU de plus à monter ou une LU à renommer ? Envoyez un MP à ${who}.
 

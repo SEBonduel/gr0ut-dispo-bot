@@ -101,6 +101,8 @@ annonce dans `STREAM_CHANNEL_ID` (📽️Stream) dès que le live démarre.
   rôles du clan (`STREAM_ROLE_IDS`), une chaîne par membre. Les officiers (*Gérer les
   rôles* ou *Gérer le serveur*) peuvent ajouter `membre:` pour inscrire la chaîne de
   quelqu'un d'autre, sans limite. Relancer la commande répare un abonnement en échec.
+  Le propriétaire de la chaîne reçoit le rôle `STREAMER_ROLE_ID` (TWITCH) s'il ne l'a pas
+  (le rôle du bot doit être au-dessus). `/stream-retirer` ne retire pas ce rôle.
 - **`/stream-retirer [pseudo]`** : retire ta chaîne (un officier peut retirer n'importe laquelle).
 - **`/stream-liste`** : chaînes inscrites, leur propriétaire et l'état de l'abonnement Twitch.
 

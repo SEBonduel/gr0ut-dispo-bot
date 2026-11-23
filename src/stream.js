@@ -2,7 +2,8 @@
  * Annonces des lives Twitch dans le salon Stream (remplace Streamcord).
  *
  * - /stream-ajouter pseudo [membre] : un membre du clan (STREAM_ROLE_IDS) inscrit sa
- *   chaîne (une seule) ; un officier peut inscrire celle d'un autre membre.
+ *   chaîne (une seule) ; un officier peut inscrire celle d'un autre membre. Le
+ *   propriétaire de la chaîne reçoit le rôle STREAMER_ROLE_ID (TWITCH) s'il ne l'a pas.
  * - /stream-retirer [pseudo] : retire sa chaîne (un officier peut retirer n'importe laquelle).
  * - /stream-liste : chaînes inscrites et état de leur abonnement Twitch.
  *
@@ -13,7 +14,8 @@
  * Secrets : TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET (appli de dev.twitch.tv),
  *   TWITCH_EVENTSUB_SECRET (10 à 100 caractères, signe les appels de Twitch).
  * Vars : STREAM_CHANNEL_ID, STREAM_PING ("everyone", id de rôle, ou vide),
- *   STREAM_ROLE_IDS (rôles qui peuvent s'inscrire eux-mêmes ; vide = tout le monde).
+ *   STREAM_ROLE_IDS (rôles qui peuvent s'inscrire eux-mêmes ; vide = tout le monde),
+ *   STREAMER_ROLE_ID (rôle donné aux streamers inscrits ; vide = aucun).
  * KV (DISPO) : "streams" = { idTwitch: { login, name, discordId, subId, addedBy, addedAt } },
  *   "twitch:token" (jeton d'appli), "stream_live:<idTwitch>" (dernier live annoncé),
  *   "stream_last" (trace de la dernière annonce, pour diagnostic).
@@ -343,9 +345,36 @@ async function addStream(i, env, origin) {
   };
   await saveStreams(env, streams);
   const where = env.STREAM_CHANNEL_ID ? `<#${env.STREAM_CHANNEL_ID}>` : "le salon Stream";
-  return existing
+  return (existing
     ? `✅ **${esc(user.display_name)}** (${link(user.login)}) était déjà inscrite : abonnement Twitch vérifié.`
-    : `✅ **${esc(user.display_name)}** (${link(user.login)}) est inscrite : chaque live sera annoncé dans ${where}.`;
+    : `✅ **${esc(user.display_name)}** (${link(user.login)}) est inscrite : chaque live sera annoncé dans ${where}.`) +
+    await giveStreamerRole(i, env, streams[user.id].discordId);
+}
+
+/** Donne le rôle des streamers (STREAMER_ROLE_ID) au propriétaire s'il ne l'a pas déjà. */
+async function giveStreamerRole(i, env, ownerId) {
+  const roleId = String(env.STREAMER_ROLE_ID || "").trim();
+  if (!roleId) return "";
+  const auth = { Authorization: `Bot ${env.DISCORD_TOKEN}` };
+  const memberUrl = `${API}/guilds/${i.guild_id}/members/${ownerId}`;
+  // Rôles de l'auteur, ou du membre choisi dans l'option "membre" ; sinon relus sur Discord.
+  let roles = ownerId === i.member.user.id ? i.member.roles : i.data?.resolved?.members?.[ownerId]?.roles;
+  if (!roles) {
+    const m = await fetch(memberUrl, { headers: auth });
+    if (m.ok) roles = (await m.json()).roles;
+  }
+  if (roles?.includes(roleId)) return "";
+  const r = await fetch(`${memberUrl}/roles/${roleId}`, {
+    method: "PUT",
+    headers: { ...auth, "X-Audit-Log-Reason": encodeURIComponent("Chaîne Twitch inscrite (/stream-ajouter)") },
+  });
+  if (!r.ok) {
+    return `\n⚠️ Je n'ai pas pu donner le rôle <@&${roleId}> (${r.status}) : le rôle du bot doit ` +
+      "avoir « Gérer les rôles » et être placé au-dessus.";
+  }
+  return ownerId === i.member.user.id
+    ? `\nTu as reçu le rôle <@&${roleId}>.`
+    : `\n<@${ownerId}> a reçu le rôle <@&${roleId}>.`;
 }
 
 async function removeStream(i, env) {

@@ -6,6 +6,9 @@
  *   propriétaire de la chaîne reçoit le rôle STREAMER_ROLE_ID (TWITCH) s'il ne l'a pas.
  * - /stream-retirer [pseudo] : retire sa chaîne (un officier peut retirer n'importe laquelle).
  * - /stream-liste : chaînes inscrites et état de leur abonnement Twitch.
+ * - /panneau-stream (officiers) : poste dans le salon un panneau à boutons qui fait la
+ *   même chose (M'inscrire ouvre une fenêtre pour le pseudo). Indispensable dans le
+ *   salon Stream : sans le droit d'écrire, Discord y bloque aussi les /commandes.
  *
  * Pour chaque chaîne, le bot ouvre chez Twitch un abonnement EventSub "stream.online" :
  * Twitch appelle POST /twitch dès que le live démarre (pas de cron, pas de sondage), et
@@ -28,7 +31,7 @@ const ADMINISTRATOR = 8n;
 const MANAGE_GUILD = 32n;
 const MANAGE_ROLES = 268435456n;
 
-export const STREAM_COMMANDS = new Set(["stream-ajouter", "stream-retirer", "stream-liste"]);
+export const STREAM_COMMANDS = new Set(["stream-ajouter", "stream-retirer", "stream-liste", "panneau-stream"]);
 
 const esc = (s) => String(s).replace(/([\\*_~`|])/g, "\\$1");
 const link = (login) => `[twitch.tv/${login}](<https://twitch.tv/${login}>)`;
@@ -390,7 +393,8 @@ async function removeStream(i, env) {
     const mine = Object.keys(streams).filter((k) => streams[k].discordId === uid);
     if (!mine.length) return "Tu n'as inscrit aucune chaîne.";
     if (mine.length > 1) {
-      return "Précise le pseudo à retirer : " + mine.map((k) => `\`${streams[k].login}\``).join(", ");
+      return "Tu as plusieurs chaînes : retire-les avec `/stream-retirer pseudo` (" +
+        mine.map((k) => `\`${streams[k].login}\``).join(", ") + ").";
     }
     id = mine[0];
   }
@@ -428,11 +432,12 @@ async function listStreams(i, env) {
   ].join("\n");
 }
 
-/** Commandes /stream-* : réponse éphémère différée (les appels à Twitch peuvent dépasser 3 s). */
-export function streamCommand(interaction, env, ctx, origin) {
-  const run = { "stream-ajouter": addStream, "stream-retirer": removeStream, "stream-liste": listStreams };
+const reply = (data) => new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+
+/** Réponse éphémère différée (les appels à Twitch peuvent dépasser 3 s), complétée par `work`. */
+function deferEphemeral(interaction, ctx, work) {
   ctx.waitUntil(
-    run[interaction.data.name](interaction, env, origin)
+    work()
       .catch((e) => `❌ ${e.message}`)
       .then((content) => fetch(
         `${API}/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`, {
@@ -441,6 +446,83 @@ export function streamCommand(interaction, env, ctx, origin) {
           body: JSON.stringify({ content: content.slice(0, 2000), allowed_mentions: { parse: [] } }),
         })),
   );
-  return new Response(JSON.stringify({ type: 5, data: { flags: 64 } }),
-    { headers: { "content-type": "application/json" } });
+  return reply({ type: 5, data: { flags: 64 } });
+}
+
+/** Panneau à boutons du salon Stream (les membres n'y ont pas le droit d'écrire, donc pas de /commande). */
+export function streamPanel(env) {
+  const role = String(env.STREAMER_ROLE_ID || "").trim();
+  return {
+    embeds: [{
+      title: "📺 Annonces des lives Twitch",
+      description: [
+        "Tu streames ? Inscris ta chaîne : dès que tu lances un live, il est annoncé ici.",
+        "",
+        `**M'inscrire** : donne ton pseudo Twitch (une chaîne par membre du clan)` +
+          (role ? `, tu reçois le rôle <@&${role}>.` : "."),
+        "**Me retirer** : tes lives ne sont plus annoncés.",
+        "**Chaînes inscrites** : la liste des streamers du clan.",
+        "",
+        "-# Les réponses du bot ne sont visibles que par toi.",
+      ].join("\n"),
+      color: 0x9146ff,
+    }],
+    components: [{
+      type: 1,
+      components: [
+        { type: 2, style: 3, label: "M'inscrire", emoji: { name: "📺" }, custom_id: "stream:add" },
+        { type: 2, style: 4, label: "Me retirer", custom_id: "stream:remove" },
+        { type: 2, style: 2, label: "Chaînes inscrites", custom_id: "stream:list" },
+      ],
+    }],
+    allowed_mentions: { parse: [] },
+  };
+}
+
+/** Commande /panneau-stream (officiers) : poste le panneau dans le salon courant. */
+async function postPanel(i, env) {
+  const r = await fetch(`${API}/channels/${i.channel_id}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bot ${env.DISCORD_TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify(streamPanel(env)),
+  });
+  return r.ok ? "✅ Panneau posté : pense à l'épingler."
+    : `❌ Impossible de poster ici (${r.status}) : le bot doit pouvoir voir ce salon et y écrire.`;
+}
+
+/** Commandes /stream-* et /panneau-stream. */
+export function streamCommand(interaction, env, ctx, origin) {
+  const run = { "stream-ajouter": addStream, "stream-retirer": removeStream,
+    "stream-liste": listStreams, "panneau-stream": postPanel };
+  return deferEphemeral(interaction, ctx, () => run[interaction.data.name](interaction, env, origin));
+}
+
+/** Boutons du panneau (custom_id "stream:...") et fenêtre de saisie du pseudo. */
+export function streamComponent(interaction, env, ctx, origin) {
+  const id = interaction.data?.custom_id;
+  if (id === "stream:add") {
+    // Fenêtre de saisie : doit être la réponse immédiate au clic (pas de réponse différée).
+    return reply({
+      type: 9,
+      data: {
+        custom_id: "stream:add-form",
+        title: "Inscrire ma chaîne Twitch",
+        components: [{
+          type: 1,
+          components: [{
+            type: 4, custom_id: "pseudo", style: 1, required: true, min_length: 2, max_length: 100,
+            label: "Ton pseudo Twitch ou le lien de ta chaîne", placeholder: "ex. vuxor1er",
+          }],
+        }],
+      },
+    });
+  }
+  if (id === "stream:add-form") {
+    const value = interaction.data.components?.[0]?.components?.[0]?.value;
+    const asCommand = { ...interaction, data: { name: "stream-ajouter", options: [{ name: "pseudo", value }] } };
+    return deferEphemeral(interaction, ctx, () => addStream(asCommand, env, origin));
+  }
+  if (id === "stream:remove") return deferEphemeral(interaction, ctx, () => removeStream(interaction, env));
+  if (id === "stream:list") return deferEphemeral(interaction, ctx, () => listStreams(interaction, env));
+  return reply({ type: 6 });  // bouton inconnu : on accuse réception sans rien changer
 }

@@ -1,6 +1,6 @@
 /**
  * Enregistre les commandes slash (globales) auprès de Discord : /sondage, /panneau-lu,
- * /stream-ajouter, /stream-retirer, /stream-liste.
+ * /stream-ajouter, /stream-retirer, /stream-liste, /panneau-stream.
  * Usage : DISCORD_APP_ID=... DISCORD_TOKEN=... node src/register.js
  * (commande globale : propagation jusqu'à ~1h ; relancer si on change la définition)
  */
@@ -47,6 +47,13 @@ const commands = [
     name: "stream-liste",
     description: "Liste les chaînes Twitch annoncées dans le salon Stream",
     type: 1,
+    contexts: [0],
+  },
+  {
+    name: "panneau-stream",
+    description: "Poste dans ce salon le panneau à boutons des annonces Twitch",
+    type: 1,
+    default_member_permissions: "268435456",  // "Gérer les rôles" : officiers seulement
     contexts: [0],
   },
 ];

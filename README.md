@@ -105,6 +105,10 @@ annonce dans `STREAM_CHANNEL_ID` (📽️Stream) dès que le live démarre.
   (le rôle du bot doit être au-dessus). `/stream-retirer` ne retire pas ce rôle.
 - **`/stream-retirer [pseudo]`** : retire ta chaîne (un officier peut retirer n'importe laquelle).
 - **`/stream-liste`** : chaînes inscrites, leur propriétaire et l'état de l'abonnement Twitch.
+- **`/panneau-stream`** (officiers) : poste un panneau à boutons *M'inscrire* (fenêtre pour
+  le pseudo), *Me retirer* et *Chaînes inscrites*, épinglé dans 📽️Stream. C'est le seul
+  moyen d'inscription dans ce salon : sans le droit d'y écrire, Discord y bloque aussi
+  les /commandes. Les /commandes marchent dans les salons où l'on peut écrire.
 
 Fonctionnement : pour chaque chaîne, le bot ouvre un abonnement Twitch EventSub
 `stream.online` vers `https://<worker>/twitch`. Twitch appelle cette URL au début du live

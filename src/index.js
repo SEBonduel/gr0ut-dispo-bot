@@ -11,8 +11,9 @@
  * Commande /panneau-lu : poste le panneau des line-ups des Manœuvres. Chaque joueur
  * clique sur sa LU (ou Remplaçant) et reçoit le rôle qui ouvre ses salons.
  *
- * Commandes /stream-ajouter, /stream-retirer, /stream-liste et route POST /twitch :
- * annonces des lives Twitch dans le salon Stream (voir src/stream.js).
+ * Commandes /stream-ajouter, /stream-retirer, /stream-liste, /panneau-stream (panneau à
+ * boutons) et route POST /twitch : annonces des lives Twitch dans le salon Stream
+ * (voir src/stream.js).
  *
  * Secrets (wrangler secret put ...):
  *   DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY,
@@ -29,7 +30,7 @@ import {
   InteractionResponseType,
 } from "discord-interactions";
 import { luAnnouncement } from "./lu-annonce.js";
-import { STREAM_COMMANDS, streamCommand, handleTwitchWebhook } from "./stream.js";
+import { STREAM_COMMANDS, streamCommand, streamComponent, handleTwitchWebhook } from "./stream.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -385,6 +386,12 @@ async function handleInteraction(interaction, env, ctx, origin) {
         data: { flags: 64 },  // éphémère : seul l'officier voit "Panneau posté"
       });
     }
+  }
+
+  // Panneau du salon Stream : boutons, et fenêtre de saisie du pseudo Twitch (type 5).
+  if ((interaction.type === InteractionType.MESSAGE_COMPONENT || interaction.type === 5) &&
+      (interaction.data?.custom_id || "").startsWith("stream:")) {
+    return streamComponent(interaction, env, ctx, origin);
   }
 
   if (interaction.type === InteractionType.MESSAGE_COMPONENT) {

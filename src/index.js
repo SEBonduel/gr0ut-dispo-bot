@@ -11,10 +11,15 @@
  * Commande /panneau-lu : poste le panneau des line-ups des Manœuvres. Chaque joueur
  * clique sur sa LU (ou Remplaçant) et reçoit le rôle qui ouvre ses salons.
  *
+ * Commandes /stream-ajouter, /stream-retirer, /stream-liste et route POST /twitch :
+ * annonces des lives Twitch dans le salon Stream (voir src/stream.js).
+ *
  * Secrets (wrangler secret put ...):
- *   DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY
+ *   DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TEST_KEY,
+ *   TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_SECRET
  * Vars (wrangler.toml): DISCORD_APP_ID, DISPO_CHANNEL_ID, LU_ROLE_IDS, LU_GROUPS,
- *   LU_SUB_ROLE_ID, LU_SUB_CHANNEL_IDS, LU_CONTACT
+ *   LU_SUB_ROLE_ID, LU_SUB_CHANNEL_IDS, LU_CONTACT, STREAM_CHANNEL_ID, STREAM_PING,
+ *   STREAM_ROLE_IDS
  * Binding KV : DISPO
  */
 
@@ -24,6 +29,7 @@ import {
   InteractionResponseType,
 } from "discord-interactions";
 import { luAnnouncement } from "./lu-annonce.js";
+import { STREAM_COMMANDS, streamCommand, handleTwitchWebhook } from "./stream.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -347,13 +353,17 @@ async function handleLuClick(interaction, env) {
 
 // --- Interactions Discord ----------------------------------------------------
 
-async function handleInteraction(interaction, env, ctx) {
+async function handleInteraction(interaction, env, ctx, origin) {
   if (interaction.type === InteractionType.PING) {
     return json({ type: InteractionResponseType.PONG });
   }
 
-  // Commande /sondage : poste un sondage de dispo à la demande.
   if (interaction.type === InteractionType.APPLICATION_COMMAND) {
+    // Commandes /stream-* : l'URL publique du worker sert de callback aux abonnements Twitch.
+    if (STREAM_COMMANDS.has(interaction.data?.name)) {
+      return streamCommand(interaction, env, ctx, origin);
+    }
+    // Commande /sondage : poste un sondage de dispo à la demande.
     if (interaction.data?.name === "sondage") {
       const dateKey = interaction.id; // identifiant unique de ce sondage
       const tally = { present: {}, absent: {}, maybe: {} };
@@ -402,7 +412,12 @@ export default {
       const valid = sig && ts &&
         (await verifyKey(raw, sig, ts, env.DISCORD_PUBLIC_KEY));
       if (!valid) return new Response("Bad request signature", { status: 401 });
-      return handleInteraction(JSON.parse(raw), env, ctx);
+      return handleInteraction(JSON.parse(raw), env, ctx, url.origin);
+    }
+
+    // Appels EventSub de Twitch (début de live) : signés avec TWITCH_EVENTSUB_SECRET.
+    if (url.pathname === "/twitch" && request.method === "POST") {
+      return handleTwitchWebhook(request, env, ctx);
     }
 
     return new Response("GR0UT dispo bot OK", { status: 200 });

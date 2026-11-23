@@ -31,3 +31,12 @@ LU_SUB_ROLE_ID = "1564576400189423669"
 LU_SUB_CHANNEL_IDS = "1564576422910230580,1564576425061654568"
 # À qui écrire pour créer ou renommer une LU : id Discord (mention cliquable) ou pseudo
 LU_CONTACT = "330050654125162511"
+# Annonces des lives Twitch (src/stream.js). Secrets à poser en plus : TWITCH_CLIENT_ID,
+# TWITCH_CLIENT_SECRET (appli de dev.twitch.tv) et TWITCH_EVENTSUB_SECRET.
+# Salon des annonces (📽️Stream)
+STREAM_CHANNEL_ID = "1444692493760205004"
+# Ping de l'annonce : "everyone", un id de rôle, ou "" pour ne pinger personne
+STREAM_PING = "everyone"
+# Rôles qui peuvent inscrire eux-mêmes leur chaîne (les rôles du clan) ; vide = tout le
+# monde. Les officiers (Gérer les rôles / le serveur) peuvent toujours inscrire n'importe qui.
+STREAM_ROLE_IDS = "1397250111536496710,1442955236502143037,1358489399934845228,1290233405752999936,1480973835426599072,1290579033737793606,1405979431297880134,804699000628445185,1290235458294648914,1411354662325588018,1480184727611768934,804625653244624927,1290045874046763160,1411355366494703708"

@@ -1,5 +1,6 @@
 /**
- * Enregistre les commandes slash /sondage et /panneau-lu (globales) auprès de Discord.
+ * Enregistre les commandes slash (globales) auprès de Discord : /sondage, /panneau-lu,
+ * /stream-ajouter, /stream-retirer, /stream-liste.
  * Usage : DISCORD_APP_ID=... DISCORD_TOKEN=... node src/register.js
  * (commande globale : propagation jusqu'à ~1h ; relancer si on change la définition)
  */
@@ -18,6 +19,35 @@ const commands = [
     type: 1,
     default_member_permissions: "268435456",  // "Gérer les rôles" : officiers seulement
     contexts: [0],  // serveur uniquement
+  },
+  // Annonces des lives Twitch dans le salon Stream (src/stream.js)
+  {
+    name: "stream-ajouter",
+    description: "Inscris ta chaîne Twitch : tes lives seront annoncés dans le salon Stream",
+    type: 1,
+    contexts: [0],
+    options: [
+      { type: 3, name: "pseudo", description: "Ton pseudo Twitch ou le lien de ta chaîne",
+        required: true, min_length: 2, max_length: 100 },
+      { type: 6, name: "membre", description: "(Officiers) membre à qui appartient la chaîne",
+        required: false },
+    ],
+  },
+  {
+    name: "stream-retirer",
+    description: "Retire une chaîne Twitch des annonces du salon Stream",
+    type: 1,
+    contexts: [0],
+    options: [
+      { type: 3, name: "pseudo", description: "Pseudo Twitch à retirer (par défaut : ta chaîne)",
+        required: false, max_length: 100 },
+    ],
+  },
+  {
+    name: "stream-liste",
+    description: "Liste les chaînes Twitch annoncées dans le salon Stream",
+    type: 1,
+    contexts: [0],
   },
 ];
 

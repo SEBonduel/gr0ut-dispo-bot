@@ -92,6 +92,40 @@ Un rôle ajouté à `OFFICER_ROLE_IDS` reçoit de même l'accès aux salons exis
 Le bouton apparaît sur le panneau au clic suivant. Le panneau tient 4 lignes de 5 LU,
 chaque section commençant sur une nouvelle ligne.
 
+## Annonces des lives Twitch (salon Stream)
+
+Remplace Streamcord : chaque streamer inscrit lui-même sa chaîne, et le bot poste une
+annonce dans `STREAM_CHANNEL_ID` (📽️Stream) dès que le live démarre.
+
+- **`/stream-ajouter pseudo`** : inscrit ta chaîne (pseudo ou lien twitch.tv). Réservé aux
+  rôles du clan (`STREAM_ROLE_IDS`), une chaîne par membre. Les officiers (*Gérer les
+  rôles* ou *Gérer le serveur*) peuvent ajouter `membre:` pour inscrire la chaîne de
+  quelqu'un d'autre, sans limite. Relancer la commande répare un abonnement en échec.
+- **`/stream-retirer [pseudo]`** : retire ta chaîne (un officier peut retirer n'importe laquelle).
+- **`/stream-liste`** : chaînes inscrites, leur propriétaire et l'état de l'abonnement Twitch.
+
+Fonctionnement : pour chaque chaîne, le bot ouvre un abonnement Twitch EventSub
+`stream.online` vers `https://<worker>/twitch`. Twitch appelle cette URL au début du live
+(appels signés avec `TWITCH_EVENTSUB_SECRET`) : pas de cron, annonce en quelques secondes.
+L'annonce pingue `STREAM_PING` (`everyone`, un id de rôle, ou vide), cite le membre
+Discord sans le pinger, et montre le titre, le jeu et l'aperçu du live. Trace de la
+dernière annonce : clé KV `stream_last`.
+
+Mise en place :
+
+1. **Appli Twitch** sur [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps)
+   (compte Twitch avec double authentification) : *Register Your Application*, nom libre,
+   *OAuth Redirect URL* `http://localhost`, catégorie *Chat Bot*, type *Confidential*.
+   Puis *Manage* : copie le **Client ID** et génère un **New Secret**.
+2. Mets `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` et `TWITCH_EVENTSUB_SECRET` (10 à 100
+   caractères aléatoires) dans `.dev.vars`, puis pousse-les en secrets du worker :
+   ```bash
+   for k in TWITCH_CLIENT_ID TWITCH_CLIENT_SECRET TWITCH_EVENTSUB_SECRET; do
+     grep "^$k=" .dev.vars | cut -d= -f2- | npx wrangler secret put "$k"
+   done
+   ```
+3. `npx wrangler deploy`, puis `node --env-file=.dev.vars src/register.js`.
+
 ## Notes
 
 - Pour restreindre qui peut lancer `/sondage` : *Paramètres du serveur →
